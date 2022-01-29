@@ -1,8 +1,10 @@
 from __future__ import print_function, division
 import warnings
-
+from appdirs import *
+from dnl_mapper import *
 warnings.filterwarnings("ignore")
 import os.path
+
 import pandas as pd
 import torch
 import torch.nn as nn
@@ -12,6 +14,8 @@ from torchvision import datasets, models, transforms
 import dlib
 import os
 import argparse
+import shutil
+
 
 
 def rect_to_bb(rect):
@@ -25,61 +29,79 @@ def rect_to_bb(rect):
     # return a tuple of (x, y, w, h)
     return (x, y, w, h)
 
-
-def detect_face(image_paths, SAVE_DETECTED_AT, default_max_size=800, size=300, padding=0.25):
-    cnn_face_detector = dlib.cnn_face_detection_model_v1('models/mmod_human_face_detector.dat')
-    sp = dlib.shape_predictor('models/shape_predictor_5_face_landmarks.dat')
-    base = 2000  # largest width and height
-    for index, image_path in enumerate(image_paths):
-        if index % 1000 == 0:
-            print('---%d/%d---' % (index, len(image_paths)))
-        img = dlib.load_rgb_image(image_path)
-
-        old_height, old_width, _ = img.shape
-
-        if old_width > old_height:
-            new_width, new_height = default_max_size, int(default_max_size * old_height / old_width)
-        else:
-            new_width, new_height = int(default_max_size * old_width / old_height), default_max_size
-        img = dlib.resize_image(img, rows=new_height, cols=new_width)
-
-        dets = cnn_face_detector(img, 1)
-        num_faces = len(dets)
-        if num_faces == 0:
-            print("Sorry, there were no faces found in '{}'".format(image_path))
-            continue
-        # Find the 5 face landmarks we need to do the alignment.
-        faces = dlib.full_object_detections()
-        for detection in dets:
-            rect = detection.rect
-            faces.append(sp(img, rect))
-        images = dlib.get_face_chips(img, faces, size=size, padding=padding)
-        for idx, image in enumerate(images):
-            img_name = image_path.split("/")[-1]
-            path_sp = img_name.split(".")
-            face_name = os.path.join(SAVE_DETECTED_AT, path_sp[0] + "_" + "face" + str(idx) + "." + path_sp[-1])
-            dlib.save_image(image, face_name)
-
-
 class FairFacePredictor:
 
     def __init__(self):
-        pass
 
-    def predidct_age_gender_race(self, imgs_path = 'cropped_faces/'):
-        img_names = [os.path.join(imgs_path, x) for x in os.listdir(imgs_path)]
+        download_all_models()
+
+    def detect_face(self, image_paths, default_max_size=800, size=300, padding=0.25):
+
+        SAVE_DETECTED_AT = get_cache_directory()
+
+        if not os.path.exists(SAVE_DETECTED_AT):
+            os.makedirs(SAVE_DETECTED_AT)
+        elif len(os.listdir(SAVE_DETECTED_AT)) != 0:
+             shutil.rmtree(SAVE_DETECTED_AT)
+             os.makedirs(SAVE_DETECTED_AT)
+
+
+        cnn_face_detector = dlib.cnn_face_detection_model_v1(MMOD[0])
+        sp = dlib.shape_predictor(SHAPE)
+        base = 2000  # largest width and height
+        for index, image_path in enumerate(image_paths):
+            if index % 1000 == 0:
+                print('---%d/%d---' % (index, len(image_paths)))
+            img = dlib.load_rgb_image(image_path)
+
+            old_height, old_width, _ = img.shape
+
+            if old_width > old_height:
+                new_width, new_height = default_max_size, int(default_max_size * old_height / old_width)
+            else:
+                new_width, new_height = int(default_max_size * old_width / old_height), default_max_size
+            img = dlib.resize_image(img, rows=new_height, cols=new_width)
+
+            dets = cnn_face_detector(img, 1)
+            num_faces = len(dets)
+            if num_faces == 0:
+                print("Sorry, there were no faces found in '{}'".format(image_path))
+                continue
+            # Find the 5 face landmarks we need to do the alignment.
+            faces = dlib.full_object_detections()
+            for detection in dets:
+                rect = detection.rect
+                faces.append(sp(img, rect))
+            images = dlib.get_face_chips(img, faces, size=size, padding=padding)
+
+            # TODO: THIS IS WHERE WE DIVERGE FROM THE ORIGINAL CODE
+
+            print(images, print(type(images)))
+
+            for idx, image in enumerate(images):
+                img_name = image_path.split("/")[-1]
+                path_sp = img_name.split(".")
+                face_name = os.path.join(SAVE_DETECTED_AT, path_sp[0] + "_" + "face" + str(idx) + "." + path_sp[-1])
+                dlib.save_image(image, face_name)
+                break
+
+    def predidct_age_gender_race(self):
+
+        SAVE_DETECTED_AT = user_cache_dir("fairface", "demographer")
+
+        img_names = [os.path.join(SAVE_DETECTED_AT, x) for x in os.listdir(SAVE_DETECTED_AT)]
 
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         model_fair_7 = torchvision.models.resnet34(pretrained=True)
         model_fair_7.fc = nn.Linear(model_fair_7.fc.in_features, 18)
-        model_fair_7.load_state_dict(torch.load('models/res34_fair_align_multi_7_20190809.pt'))
+        model_fair_7.load_state_dict(torch.load(MODEL_7[0]))
         model_fair_7 = model_fair_7.to(device)
         model_fair_7.eval()
 
         model_fair_4 = torchvision.models.resnet34(pretrained=True)
         model_fair_4.fc = nn.Linear(model_fair_4.fc.in_features, 18)
-        model_fair_4.load_state_dict(torch.load('models/res34_fair_align_multi_4_20190809.pt'))
+        model_fair_4.load_state_dict(torch.load(MODEL_4[0]))
         model_fair_4 = model_fair_4.to(device)
         model_fair_4.eval()
 
@@ -202,12 +224,10 @@ class FairFacePredictor:
                          'race_scores_fair', 'race_scores_fair_4',
                          'gender_scores_fair', 'age_scores_fair']]
 
+        if len(os.listdir(SAVE_DETECTED_AT)) != 0:
+            shutil.rmtree(SAVE_DETECTED_AT)
+
         return result
-
-
-def ensure_dir(directory):
-    if not os.path.exists(directory):
-        os.makedirs(directory)
 
 
 if __name__ == "__main__":
@@ -215,12 +235,8 @@ if __name__ == "__main__":
     dlib.DLIB_USE_CUDA = True
 
     images = ["bibi.jpeg", "bobi.jpeg"]
-    SAVE_DETECTED_AT = "detected_faces"
-    ensure_dir(SAVE_DETECTED_AT)
 
-    detect_face(images, SAVE_DETECTED_AT)
-
-    # Please change test_outputs.csv to actual name of output csv.
-    #images = ["detected_faces/bibi_face0.jpeg", "detected_faces/bobi_face0.jpeg"]
     fair = FairFacePredictor()
-    print(fair.predidct_age_gender_race(SAVE_DETECTED_AT))
+    fair.detect_face(images)
+
+    print(fair.predidct_age_gender_race())
