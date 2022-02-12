@@ -16,8 +16,6 @@ import os
 import argparse
 import shutil
 
-
-
 def rect_to_bb(rect):
     # take a bounding predicted by dlib and convert it
     # to the format (x, y, w, h) as we would normally do
@@ -38,16 +36,13 @@ class FairFacePredictor:
     def detect_face(self, image_paths, default_max_size=800, size=300, padding=0.25):
 
         SAVE_DETECTED_AT = get_cache_directory()
+        models_path = get_cache_directory("models")
 
         if not os.path.exists(SAVE_DETECTED_AT):
             os.makedirs(SAVE_DETECTED_AT)
-        elif len(os.listdir(SAVE_DETECTED_AT)) != 0:
-             shutil.rmtree(SAVE_DETECTED_AT)
-             os.makedirs(SAVE_DETECTED_AT)
 
-
-        cnn_face_detector = dlib.cnn_face_detection_model_v1(MMOD[0])
-        sp = dlib.shape_predictor(SHAPE)
+        cnn_face_detector = dlib.cnn_face_detection_model_v1(os.path.join(models_path, MMOD))
+        sp = dlib.shape_predictor(os.path.join(models_path, SHAPE))
         base = 2000  # largest width and height
         for index, image_path in enumerate(image_paths):
             if index % 1000 == 0:
@@ -76,8 +71,6 @@ class FairFacePredictor:
 
             # TODO: THIS IS WHERE WE DIVERGE FROM THE ORIGINAL CODE
 
-            print(images, print(type(images)))
-
             for idx, image in enumerate(images):
                 img_name = image_path.split("/")[-1]
                 path_sp = img_name.split(".")
@@ -87,7 +80,9 @@ class FairFacePredictor:
 
     def predidct_age_gender_race(self):
 
-        SAVE_DETECTED_AT = user_cache_dir("fairface", "demographer")
+        SAVE_DETECTED_AT = get_cache_directory()
+
+        models_path = get_cache_directory("models")
 
         img_names = [os.path.join(SAVE_DETECTED_AT, x) for x in os.listdir(SAVE_DETECTED_AT)]
 
@@ -95,13 +90,13 @@ class FairFacePredictor:
 
         model_fair_7 = torchvision.models.resnet34(pretrained=True)
         model_fair_7.fc = nn.Linear(model_fair_7.fc.in_features, 18)
-        model_fair_7.load_state_dict(torch.load(MODEL_7[0]))
+        model_fair_7.load_state_dict(torch.load(os.path.join(models_path,MODEL_7)))
         model_fair_7 = model_fair_7.to(device)
         model_fair_7.eval()
 
         model_fair_4 = torchvision.models.resnet34(pretrained=True)
         model_fair_4.fc = nn.Linear(model_fair_4.fc.in_features, 18)
-        model_fair_4.load_state_dict(torch.load(MODEL_4[0]))
+        model_fair_4.load_state_dict(torch.load(os.path.join(models_path, MODEL_4)))
         model_fair_4 = model_fair_4.to(device)
         model_fair_4.eval()
 

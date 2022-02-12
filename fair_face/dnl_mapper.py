@@ -1,7 +1,7 @@
 import requests
 from enum import Enum
 import os
-import tqdm
+from tqdm import tqdm
 from appdirs import user_cache_dir
 from pathlib import Path
 
@@ -20,16 +20,16 @@ def download_all_models():
     to_down = zip([MODEL_4, MODEL_7, MMOD, SHAPE], [MODEL_4_DND, MODEL_7_DND, MMOD_DND, SHAPE_DND])
 
     for name, link in to_down:
-        cache_dir = get_cache_directory()
+        cache_dir = get_cache_directory("models")
         filepath = os.path.join(cache_dir, name)
         if not os.path.exists(filepath):
             download_with_progress(link, filepath)
 
-def get_cache_directory():
+def get_cache_directory(elements="image"):
     """
     Returns the cache directory on the system
     """
-    appname = "fairface"
+    appname = f"fairface-{elements}"
     appauthor = "demographer"
     cache_dir = user_cache_dir(appname, appauthor)
 
@@ -49,8 +49,10 @@ def download_with_progress(url, destination):
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
         raise SystemExit(e)
+    print(destination)
     with tqdm.wrapattr(open(destination, "wb"), "write",
                        miniters=1, desc=url.split('/')[-1],
                        total=int(response.headers.get('content-length', 0))) as fout:
         for chunk in response.iter_content(chunk_size=4096):
             fout.write(chunk)
+
