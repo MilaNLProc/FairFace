@@ -234,4 +234,7 @@ if __name__ == "__main__":
     fair = FairFacePredictor()
     fair.detect_face(images)
 
-    print(fair.predidct_age_gender_race())
+    data = (fair.predidct_age_gender_race())
+    data.to_csv("saved.csv")
+
+
